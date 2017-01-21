@@ -3,11 +3,10 @@ import discord, random, asyncio, pickle, os, os.path, re, random
 client = discord.Client()
 settings = {}
 servers = []
-#settings = {'commands': [command, output], 'authedRoles': [role1, role2], 'reminders', [r1, r2]}
  
 def saveSettings(settings, server):
     pickle.dump(settings[server], open('./settings/' + str(server) + '.bot', 'wb'))
- 
+
 def isAuthed(message, settings, server):
     if message.author.name == "Ronoman":
         return True
@@ -17,15 +16,26 @@ def isAuthed(message, settings, server):
                 return True
     return False
    
-guessingGames = {}
-class GuessingGame():
-    def __init__(self, user, client, message):
-        self.user = user
-        self.number = random.randint(1, 20)
-        self.tries = 0
+class Game():
+    def __init__(self, client, message):
+        self.user = message.author.id
         self.client = client
         self.channel = message.channel
-        client.loop.create_task(self.sendMessage("Game Started!", self.channel))
+    def parseMessage(self, message, command):
+        pass
+        
+    @asyncio.coroutine
+    def sendMessage(self, message, channel):
+        yield from self.client.send_message(channel, message)
+   
+guessingGames = {}
+class GuessingGame(Game):
+    def __init__(self, client, message):
+        super(GuessingGame, self).__init__(client, message)
+        self.number = random.randint(1, 20)
+        print(self.number)
+        self.tries = 0
+        client.loop.create_task(self.sendMessage("Counting game started!", self.channel))
 
     def parseMessage(self, message, command):
         if(message.author.id == self.user and message.channel == self.channel):
@@ -40,13 +50,10 @@ class GuessingGame():
                     self.tries += 1
                     client.loop.create_task(self.sendMessage("Too high! Total Tries: " + str(self.tries), message.channel))
                 elif guessed == self.number:
+                    self.tries += 1
                     guessingGames.pop(message.author.id + message.channel.id, None)
                     client.loop.create_task(self.sendMessage("You got it right! Total tries: " + str(self.tries), message.channel))
 
-    @asyncio.coroutine
-    def sendMessage(self, message, channel):
-        yield from self.client.send_message(channel, message)
-   
 @client.event
 @asyncio.coroutine
 def on_ready():
@@ -123,7 +130,7 @@ def on_message(message):
                 if((message.author.id + message.channel.id) in guessingGames):
                     yield from client.send_message(message.channel, "You already have a game running! Guess with !guess.")
                 else:
-                    guessingGames[message.author.id + message.channel.id] = GuessingGame(message.author.id, client, message)
+                    guessingGames[message.author.id + message.channel.id] = GuessingGame(client, message)
             
             elif(word[0] == "guess"):
                 if((message.author.id + message.channel.id) in guessingGames):
