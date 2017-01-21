@@ -3,9 +3,13 @@ import discord, random, asyncio, pickle, os, os.path, re, random
 client = discord.Client()
 settings = {}
 servers = []
+users = []
  
 def saveSettings(settings, server):
-    pickle.dump(settings[server], open('./settings/' + str(server) + '.bot', 'wb'))
+    pickle.dump(settings[server], open('./settings/servers/' + str(server) + '.svr', 'wb'))
+
+def saveUsers(users, user):
+    pickle.dump(users[user], open('./settings/users/' + str(user) + '.usr', 'wb'))
 
 def isAuthed(message, settings, server):
     if message.author.name == "Ronoman":
@@ -62,16 +66,27 @@ def on_ready():
     print(client.user.id)
     print('------')
     global settings
+    global users
     try:
         settings = {}
-        for i in os.listdir('./settings'):
+        for i in os.listdir('./settings/servers'):
             name = i.split('.')[0]
             servers.append(name)
-            settings[name] = pickle.load(open("./settings/" + name + ".bot", 'rb'))
+            settings[name] = pickle.load(open("./settings/servers/" + name + ".svr", 'rb'))
+        
         print(settings)
     except EOFError:
         print("EOFError")
         settings = {}
+
+    try:
+        users = {}
+        for i in os.listdir('./settings/users'):
+            name = i.split('.')[0]
+            users[name] = pickle.load(open('./settings/users/' + name + '.usr', 'rb'))
+    except EOFError:
+        print("EOFError")
+        users = {}
    
 @client.event
 @asyncio.coroutine
@@ -82,6 +97,11 @@ def on_message(message):
         servers.append(message.server.id)
         settings[message.server.id] = {'commands': [], 'authedRoles': [], 'data': {}}
         saveSettings(settings, message.server.id)
+
+    if message.author.id not in users:
+        if message.server.id not in users[message.author.id]:
+            users[message.author.id][message.server.id] = {}
+            saveUsers(users, message.author.id)
     server = message.server.id
     
     print("[" + message.server.name + "]:[" + message.channel.name + "] <" + message.author.name + ">: " + re.sub(r'[^\x00-\x7F]+','{emoji}', message.content))
