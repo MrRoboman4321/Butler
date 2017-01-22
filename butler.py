@@ -1,9 +1,10 @@
-import discord, random, asyncio, pickle, os, os.path, re, random, sys
+import discord, random, asyncio, pickle, os, os.path, re, random, sys, datetime
+from subprocess import Popen
 print(discord.__version__)
 client = discord.Client()
 settings = {}
 servers = []
-users = []
+users = {}
  
 def saveSettings(settings, server):
     pickle.dump(settings[server], open('./settings/servers/' + str(server) + '.svr', 'wb'))
@@ -107,9 +108,27 @@ def on_message(message):
     server = message.server.id
     
     print("[" + message.server.name + "]:[" + message.channel.name + "] <" + message.author.name + ">: " + re.sub(r'[^\x00-\x7F]+','{emoji}', message.content))
+
+    print(message.server.me.nick)
+
+    #-----START XP RANKING-----#
+    if 'lastXp' in users[message.author.id][message.server.id] and message.author.nick != message.server.me.nick:
+        total_seconds = (datetime.datetime.now() - users[message.author.id][message.server.id]['lastXp']).total_seconds()
+        print(total_seconds)
+        if total_seconds > 60:
+            users[message.author.id][message.server.id]['xp'] += 1
+            users[message.author.id][message.server.id]['lastXp'] = datetime.datetime.now()
+            saveUsers(users, message.author.id)
+            yield from client.send_message(message.channel, "Xp up! Total xp: " + str(users[message.author.id][message.server.id]['xp']))
+    elif message.author.nick != message.server.me.nick:
+        users[message.author.id][message.server.id]['lastXp'] = datetime.datetime.now()
+        users[message.author.id][message.server.id]['xp'] = 0
+        saveUsers(users, message.author.id)
+        yield from client.send_message(message.channel, "New server! Total xp: " + str(users[message.author.id][message.server.id]['xp']))
+    #------END XP RANKING------#
     
     if message.content.startswith("!"): #If its a command
-        if(message.author.name != message.server.me): #If its not from me
+        if(message.author.nick != message.server.me.nick): #If its not from me
             message.content = message.content[1:] #Remove the !
             word = message.content.split(" ") #Split up all the words into a list
             
@@ -165,6 +184,12 @@ def on_message(message):
                     guessingGames[message.author.id + message.channel.id].parseMessage(message, word)
                 else:
                     yield from client.send_message(message.channel, "Start a game with !newGame first!")
+            elif word[0] == "restart":
+                if isAuthed(message, settings, server):
+                    yield from client.send_message(message.channel, "Restarting!")
+                    p = Popen("run.bat", cwd=r"D:\\Repos\\Butler")
+                    stdout, stderr = p.communicate()
+                    sys.exit()
 
     elif message.content.lower().startswith("hello butler"): #Response to a nice hello
         if not message.channel.is_private:
