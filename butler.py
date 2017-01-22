@@ -1,5 +1,5 @@
-import discord, random, asyncio, pickle, os, os.path, re, random
- 
+import discord, random, asyncio, pickle, os, os.path, re, random, sys
+print(discord.__version__)
 client = discord.Client()
 settings = {}
 servers = []
@@ -37,14 +37,14 @@ class GuessingGame(Game):
     def __init__(self, client, message):
         super(GuessingGame, self).__init__(client, message)
         self.number = random.randint(1, 20)
-        print(self.number)
+        print("Number: " + str(self.number))
         self.tries = 0
         client.loop.create_task(self.sendMessage("Counting game started!", self.channel))
 
     def parseMessage(self, message, command):
-        if(message.author.id == self.user and message.channel == self.channel):
+        if message.author.id == self.user and message.channel == self.channel:
             guessed = int(command[1])
-            if(command[0] == "guess"):
+            if command[0] == "guess" :
                 if guessed > 20 or guessed < 1:
                     client.loop.create_task(self.sendMessage("Please enter a number between 1-20.", message.channel))
                 elif guessed < self.number:
@@ -98,68 +98,76 @@ def on_message(message):
         settings[message.server.id] = {'commands': [], 'authedRoles': [], 'data': {}}
         saveSettings(settings, message.server.id)
 
-    if message.author.id not in users:
+    if message.author.id in users:
         if message.server.id not in users[message.author.id]:
             users[message.author.id][message.server.id] = {}
             saveUsers(users, message.author.id)
+    else:
+        users[message.author.id] = {}
     server = message.server.id
     
     print("[" + message.server.name + "]:[" + message.channel.name + "] <" + message.author.name + ">: " + re.sub(r'[^\x00-\x7F]+','{emoji}', message.content))
     
     if message.content.startswith("!"): #If its a command
-        if(message.author.name != "Butler"): #If its not from me
+        if(message.author.name != message.server.me): #If its not from me
             message.content = message.content[1:] #Remove the !
             word = message.content.split(" ") #Split up all the words into a list
             
             for i in settings[server]['commands']: #Execute all text commands
-                if(word[0] == i[0]):
+                if word[0] == i[0] :
                     yield from client.send_message(message.channel, i[1])
                     
-            if(word[0] == "newCommand"): #For a new listed command
-                if(isAuthed(message, settings, server)):
+            if word[0] == "newCommand": #For a new listed command
+                if isAuthed(message, settings, server):
                     settings[server]['commands'].append([word[1],' '.join(word[2:])]) #Add the new command with all the text after concatenated with spaces
                     saveSettings(settings, server)
                     yield from client.send_message(message.channel, "Command " + word[1] + " added!")
                     
-            elif(word[0] == "list"): #List all the commands
+            elif word[0] == "list" : #List all the commands
                 temp = "Commands:\n"
                 for i in settings[server]['commands']:
                     temp = temp + i[0] + ": " + i[1] + "\n" #commandName: commandText
                 yield from client.send_message(message.channel, temp)
                     
-            elif(word[0] == "delCommand"):
-                if(isAuthed(message, settings, server)):
+            elif word[0] == "delCommand":
+                if isAuthed(message, settings, server):
                     for i in settings[server]['commands']:
-                        if(i[0] == word[1]):
+                        if i[0] == word[1]:
                             settings[server]['commands'].remove(i)
                             yield from client.send_message(message.channel, "Command " + i[0] + " removed.")
                             
-            elif(word[0] == "addAuthRole"): #Add new auth role
-                if(isAuthed(message, settings, server)):
+            elif word[0] == "addAuthRole": #Add new auth role
+                if isAuthed(message, settings, server):
                     settings[server]['authedRoles'].append(''.join(word[1:]))
                     saveSettings(settings, server)
                     yield from client.send_message(message.channel, "Added " + ''.join(word[1:]) + " to authenticated roles.")
                     
-            elif(word[0] == "privilege"):
-                if(not isAuthed(message, settings, server)):
+            elif word[0] == "privilege":
+                if not isAuthed(message, settings, server):
                     yield from client.send_message(message.channel, "You are a normal user, no admin operations may be executed from your account.")
                 else:
                     yield from client.send_message(message.channel, "You may execute any command available on this server.")
             
-            elif(word[0] == "newGame"):
-                if((message.author.id + message.channel.id) in guessingGames):
+            elif word[0] == "newGame":
+                print(guessingGames)
+                counter = 0
+                if (message.author.id + message.channel.id) in guessingGames:
+                    counter += 1
+                    print("If: " + str(counter), flush=True)
+                    sys.stdout.flush()
                     yield from client.send_message(message.channel, "You already have a game running! Guess with !guess.")
                 else:
+                    print("Else: " + str(counter), flush=True)
                     guessingGames[message.author.id + message.channel.id] = GuessingGame(client, message)
             
-            elif(word[0] == "guess"):
+            elif word[0] == "guess":
                 if((message.author.id + message.channel.id) in guessingGames):
                     guessingGames[message.author.id + message.channel.id].parseMessage(message, word)
                 else:
                     yield from client.send_message(message.channel, "Start a game with !newGame first!")
 
-    elif(message.content.lower().startswith("hello butler")): #Response to a nice hello
-        if(not message.channel.is_private):
+    elif message.content.lower().startswith("hello butler"): #Response to a nice hello
+        if not message.channel.is_private:
             yield from client.send_message(message.channel, "Hello " + message.author.top_role.name + ".")
                                                                
 client.run('MjIzMzA0NzU4OTE0NDQ5NDA4.CrKfnA.Gu6du9qXpDzIp0zmANTBEcjJ2M4')
