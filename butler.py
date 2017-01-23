@@ -1,4 +1,4 @@
-import discord, random, asyncio, pickle, os, os.path, re, random, sys, datetime
+import discord, random, asyncio, pickle, os, os.path, re, random, sys, datetime, traceback
 from subprocess import Popen
 print(discord.__version__)
 client = discord.Client()
@@ -75,7 +75,6 @@ def on_ready():
             servers.append(name)
             settings[name] = pickle.load(open("./settings/servers/" + name + ".svr", 'rb'))
         
-        print(settings)
     except EOFError:
         print("EOFError")
         settings = {}
@@ -88,6 +87,8 @@ def on_ready():
     except EOFError:
         print("EOFError")
         users = {}
+    if len(sys.argv) > 1:
+        yield from client.send_message(client.get_channel(sys.argv[1]), "Restarted!")
    
 @client.event
 @asyncio.coroutine
@@ -105,28 +106,40 @@ def on_message(message):
             saveUsers(users, message.author.id)
     else:
         users[message.author.id] = {}
+        if message.server.id not in users[message.author.id]:
+            users[message.author.id][message.server.id] = {}
+            saveUsers(users, message.author.id)
+    saveUsers(users, message.author.id)
     server = message.server.id
     
     print("[" + message.server.name + "]:[" + message.channel.name + "] <" + message.author.name + ">: " + re.sub(r'[^\x00-\x7F]+','{emoji}', message.content))
 
-    print(message.server.me.nick)
-
     #-----START XP RANKING-----#
     if 'lastXp' in users[message.author.id][message.server.id] and message.author.nick != message.server.me.nick:
         total_seconds = (datetime.datetime.now() - users[message.author.id][message.server.id]['lastXp']).total_seconds()
-        print(total_seconds)
         if total_seconds > 60:
             users[message.author.id][message.server.id]['xp'] += 1
             users[message.author.id][message.server.id]['lastXp'] = datetime.datetime.now()
+
+            if users[message.author.id][message.server.id]['xp'] >= users[message.author.id][message.server.id]['nextRank']:
+                users[message.author.id][message.server.id]['rank'] += 1
+                next = users[message.author.id][message.server.id]['nextRank']
+                users[message.author.id][message.server.id]['nextRank'] += users[message.author.id][message.server.id]['prevRank']
+                users[message.author.id][message.server.id]['prevRank'] = next
+                yield from client.send_message(message.channel, "Rank up! New rank: " + str(users[message.author.id][message.server.id]['rank']))
             saveUsers(users, message.author.id)
-            yield from client.send_message(message.channel, "Xp up! Total xp: " + str(users[message.author.id][message.server.id]['xp']))
     elif message.author.nick != message.server.me.nick:
         users[message.author.id][message.server.id]['lastXp'] = datetime.datetime.now()
         users[message.author.id][message.server.id]['xp'] = 0
+        users[message.author.id][message.server.id]['nextRank'] = 2
+        users[message.author.id][message.server.id]['prevRank'] = 1
+        users[message.author.id][message.server.id]['rank'] = 1
         saveUsers(users, message.author.id)
         yield from client.send_message(message.channel, "New server! Total xp: " + str(users[message.author.id][message.server.id]['xp']))
     #------END XP RANKING------#
-    
+
+    message.server.me.nick = message.server.me.nick if message.server.me.nick != None else "Butler"
+
     if message.content.startswith("!"): #If its a command
         if(message.author.nick != message.server.me.nick): #If its not from me
             message.content = message.content[1:] #Remove the !
@@ -145,7 +158,7 @@ def on_message(message):
             elif word[0] == "list" : #List all the commands
                 temp = "Commands:\n"
                 for i in settings[server]['commands']:
-                    temp = temp + i[0] + ": " + i[1] + "\n" #commandName: commandText
+                    temp = temp + i[0] + ": \n" + i[1] + "\n" #commandName: commandText
                 yield from client.send_message(message.channel, temp)
                     
             elif word[0] == "delCommand":
@@ -168,30 +181,59 @@ def on_message(message):
                     yield from client.send_message(message.channel, "You may execute any command available on this server.")
             
             elif word[0] == "newGame":
-                print(guessingGames)
-                counter = 0
                 if (message.author.id + message.channel.id) in guessingGames:
-                    counter += 1
-                    print("If: " + str(counter), flush=True)
-                    sys.stdout.flush()
                     yield from client.send_message(message.channel, "You already have a game running! Guess with !guess.")
                 else:
-                    print("Else: " + str(counter), flush=True)
                     guessingGames[message.author.id + message.channel.id] = GuessingGame(client, message)
             
             elif word[0] == "guess":
-                if((message.author.id + message.channel.id) in guessingGames):
+                if (message.author.id + message.channel.id) in guessingGames:
                     guessingGames[message.author.id + message.channel.id].parseMessage(message, word)
                 else:
                     yield from client.send_message(message.channel, "Start a game with !newGame first!")
+                    
             elif word[0] == "restart":
                 if isAuthed(message, settings, server):
                     yield from client.send_message(message.channel, "Restarting!")
-                    p = Popen("run.bat", cwd=r"D:\\Repos\\Butler")
-                    stdout, stderr = p.communicate()
+                    os.system("C:\Python34\python.exe butler.py " + message.channel.id)
                     sys.exit()
 
-    elif message.content.lower().startswith("hello butler"): #Response to a nice hello
+            elif word[0] == "shutdown":
+                if isAuthed(message, settings, server):
+                    yield from client.send_message(message.channel, "Cya!")
+                    sys.exit()
+
+            elif word[0] == "xp" or word[0] == 'rank':
+                yield from client.send_message(message.channel, "Total xp for this server: " + str(users[message.author.id][message.server.id]['xp']) + ", Rank: " + str(users[message.author.id][message.server.id]['rank']) + ", Xp until next rank: " + str(users[message.author.id][message.server.id]['nextRank'] - users[message.author.id][message.server.id]['xp']))
+
+            elif word[0] == "attr": #deprecated, use eval
+                if isAuthed(message, settings, server):
+                    try:
+                        if(len(word) > 1):
+                            yield from client.send_message(message.channel, "Attr: " + word[1] + ", Val: ```" + str(users[message.author.id][message.server.id][word[1]]) + "```")
+                        else:
+                            yield from client.send_message(message.channel, "Full user: " + str(users[message.author.id][message.server.id]))
+                    except KeyError:
+                        yield from client.send_message(message.channel, "Bad key")
+
+            elif word[0] == "reset":
+                if isAuthed(message, settings, server):
+                    yield from client.send_message(message.channel, "Resetting user " + message.server.get_member(word[1]).display_name + " ...")
+                    users[message.author.id][message.server.id] = {}
+                    saveUsers(users, message.author.id)
+                else:
+                    print("nope")
+
+            elif word[0] == "eval":
+                if isAuthed(message, settings, server):
+                    try:
+                        yield from client.send_message(message.channel, "Eval on \"" + ' '.join(i for i in word[1:]) + "\", res: ```" + str(eval(' '.join(i for i in word[1:]))) + "```")
+                    except Exception as e:
+                        yield from client.send_message(message.channel, "Error: ```" + '\n'.join(traceback.extract_tb(sys.exc_info()[2])[-1]) + "```")
+                        print(str(e))
+
+
+    elif message.content.lower().startswith("hello " + message.server.me.nick) or message.content.lower().startswith("hello butler"): #Response to a nice hello
         if not message.channel.is_private:
             yield from client.send_message(message.channel, "Hello " + message.author.top_role.name + ".")
                                                                
